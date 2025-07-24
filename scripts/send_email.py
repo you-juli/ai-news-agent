@@ -10,6 +10,9 @@ def clean_text(text):
     if not text:
         return ""
     
+    # Convert to string first
+    text = str(text)
+    
     # Replace non-breaking spaces and other problematic characters
     text = text.replace('\xa0', ' ')  # Non-breaking space
     text = text.replace('\u2019', "'")  # Right single quotation mark
@@ -18,10 +21,14 @@ def clean_text(text):
     text = text.replace('\u201d', '"')  # Right double quotation mark
     text = text.replace('\u2013', '-')  # En dash
     text = text.replace('\u2014', '--')  # Em dash
+    text = text.replace('\u2026', '...')  # Ellipsis
     
-    # Encode to UTF-8 and decode to ensure clean text
+    # Remove all non-ASCII characters as backup
+    text = ''.join(char for char in text if ord(char) < 128)
+    
+    # Final encoding cleanup
     try:
-        text = text.encode('utf-8', errors='ignore').decode('utf-8')
+        text = text.encode('ascii', errors='ignore').decode('ascii')
     except:
         text = str(text)
     
@@ -71,14 +78,14 @@ def send_news_email():
             print("❌ Missing email configuration. Check your environment variables.")
             return
         
-        # Create message with proper encoding
+        # Create message with ASCII-safe encoding
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = Header('🤖 Daily AI News & Research Update', 'utf-8')
+        msg['Subject'] = clean_text('🤖 Daily AI News & Research Update')
         msg['From'] = sender_email
         msg['To'] = recipient_email
         
-        # Create HTML part with UTF-8 encoding
-        html_part = MIMEText(email_content, 'html', 'utf-8')
+        # Create HTML part with ASCII encoding
+        html_part = MIMEText(clean_text(email_content), 'html', 'ascii')
         msg.attach(html_part)
         
         # Send email
@@ -86,9 +93,9 @@ def send_news_email():
         server.starttls()
         server.login(sender_email, sender_password)
         
-        # Send with proper encoding
+        # Send with proper encoding - fix for ascii codec error
         text = msg.as_string()
-        server.sendmail(sender_email, recipient_email, text.encode('utf-8'))
+        server.sendmail(sender_email, recipient_email, text)
         server.quit()
         
         print("✅ Email sent successfully!")
