@@ -78,15 +78,27 @@ class LLMSummarizer:
             )
             
             ai_summary = summary_result[0]['summary_text']
-            
-            # Post-process the summary
+
+            # Post-process the summary first
             processed_summary = self.enhance_summary(ai_summary, summary_type)
+            
+            # Then save the polished summary to DB
+            self.save_summary_to_db(article[0], processed_summary)
             
             return processed_summary
             
         except Exception as e:
             print(f"AI summarization failed: {e}")
             return self.fallback_summarize(text)
+
+    def save_summary_to_db(self, article_id, summary_text):
+    try:
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("UPDATE articles SET content = ? WHERE id = ?", (summary_text, article_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error saving summary for {article_id}: {e}")
     
     def clean_text(self, text):
         """Clean and prepare text for summarization"""
