@@ -1,0 +1,46 @@
+name: Daily AI News Agent
+
+on:
+  schedule:
+    # Run every day at 9:00 AM UTC (adjust time as needed)
+    - cron: '0 9 * * *'
+  
+  # Allow manual running for testing
+  workflow_dispatch:
+
+jobs:
+  collect-and-send-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Get the code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Install required packages
+      run: |
+        pip install requests
+    
+    - name: 🔍 Collect AI news
+      run: python scripts/collect_news.py
+      
+    - name: 📝 Generate summary
+      run: python scripts/generate_summary.py
+      
+    - name: 📧 Send email
+      run: python scripts/send_email.py
+      env:
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+    
+    - name: 💾 Save results
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "AI News Agent"
+        git add data/ || true
+        git commit -m "📰 Daily AI news update $(date)" || exit 0
+        git push || true
