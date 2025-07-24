@@ -19,7 +19,12 @@ def super_clean_text(text):
     text = text.strip()
     
     return text
-
+    
+def clean_credential(value):
+    if value is None:
+        return None
+    return ''.join(c for c in value if 32 <= ord(c) <= 126).strip()
+    
 def send_news_email():
     """Send AI news email with ultra-safe encoding"""
     try:
@@ -53,9 +58,9 @@ def send_news_email():
         # Email configuration
         smtp_server = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
         smtp_port = int(os.getenv('EMAIL_PORT', '587'))
-        sender_email = os.getenv('EMAIL_USER')
-        sender_password = os.getenv('EMAIL_PASSWORD')
-        recipient_email = os.getenv('TO_EMAIL')
+        sender_email = clean_credential(os.getenv('EMAIL_USER'))
+        sender_password = clean_credential(os.getenv('EMAIL_PASSWORD'))
+        recipient_email = clean_credential(os.getenv('TO_EMAIL'))
         
         if not all([sender_email, sender_password, recipient_email]):
             print("Missing email configuration. Check your environment variables.")
