@@ -1,68 +1,100 @@
 import smtplib
-import os
-import json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from email.header import Header
+import sqlite3
+import os
 
-def send_email():
-    """Send the daily AI news email"""
+def clean_text(text):
+    """Clean text to remove problematic characters"""
+    if not text:
+        return ""
     
-    # Email settings - these come from GitHub secrets
-    sender_email = "you.juli@gmail.com"  # You'll change this later
-    password = os.environ.get('GMAIL_APP_PASSWORD')
-    recipient = os.environ.get('RECIPIENT_EMAIL')
+    # Replace non-breaking spaces and other problematic characters
+    text = text.replace('\xa0', ' ')  # Non-breaking space
+    text = text.replace('\u2019', "'")  # Right single quotation mark
+    text = text.replace('\u2018', "'")  # Left single quotation mark
+    text = text.replace('\u201c', '"')  # Left double quotation mark
+    text = text.replace('\u201d', '"')  # Right double quotation mark
+    text = text.replace('\u2013', '-')  # En dash
+    text = text.replace('\u2014', '--')  # Em dash
     
-    if not password or not recipient:
-        print("❌ Email credentials not found in environment variables")
-        print("Make sure GMAIL_APP_PASSWORD and RECIPIENT_EMAIL are set in GitHub secrets")
-        return
-    
-    # Load today's summary
-    today = datetime.now().strftime('%Y-%m-%d')
+    # Encode to UTF-8 and decode to ensure clean text
     try:
-        with open(f'data/summary_{today}.json', 'r') as f:
-            summary_data = json.load(f)
-        email_content = summary_data['email_content']
-    except FileNotFoundError:
-        email_content = f"""🤖 Your Daily AI News Summary - {datetime.now().strftime('%B %d, %Y')}
+        text = text.encode('utf-8', errors='ignore').decode('utf-8')
+    except:
+        text = str(text)
+    
+    return text
 
-Sorry, no AI news was collected today. This might be because:
-- The news sources were temporarily unavailable
-- No new articles were published
-- There was a technical issue
-
-Your AI agent will try again tomorrow! 🚀
-"""
-    
-    # Create email message
-    message = MIMEMultipart()
-    message["From"] = sender_email
-    message["To"] = recipient
-    message["Subject"] = f"🤖 Daily AI News - {datetime.now().strftime('%B %d, %Y')}"
-    
-    # Add the email content
-    message.attach(MIMEText(email_content, "plain"))
-    
-    # Send the email
+def send_news_email():
+    """Send AI news email with proper encoding"""
     try:
-        print("📧 Connecting to Gmail...")
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()  # Enable encryption
-            server.login(sender_email, password)
-            
-            print("📤 Sending email...")
-            server.sendmail(sender_email, recipient, message.as_string())
-            
-        print("✅ Email sent successfully!")
+        # Get articles from database
+        conn = sqlite3.connect("data/articles.db")
+        cursor = conn.execute("SELECT title, content, source, url FROM articles ORDER BY published_date DESC LIMIT 10")
+        articles = cursor.fetchall()
+        conn.close()
         
-    except smtplib.SMTPAuthenticationError:
-        print("❌ Email authentication failed!")
-        print("Please check your Gmail app password is correct")
+        if not articles:
+            print("No articles found to send")
+            return
+        
+        # Build email content
+        email_content = "<h2>🤖 Daily AI News & Research</h2>\n"
+        
+        for title, content, source, url in articles:
+            # Clean all text content
+            clean_title = clean_text(title)
+            clean_content = clean_text(content)
+            clean_source = clean_text(source)
+            
+            email_content += f"""
+            <div style="margin-bottom: 20px; padding: 15px; border-left: 3px solid #007acc;">
+                <h3 style="color: #007acc; margin: 0 0 10px 0;">{clean_title}</h3>
+                <p style="margin: 0 0 10px 0; color: #333;">{clean_content}</p>
+                <p style="margin: 0; font-size: 12px; color: #666;">
+                    <strong>Source:</strong> {clean_source}
+                    {f' | <a href="{url}">Read more</a>' if url else ''}
+                </p>
+            </div>
+            """
+        
+        # Email configuration from environment variables
+        smtp_server = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('EMAIL_PORT', '587'))
+        sender_email = os.getenv('EMAIL_USER')
+        sender_password = os.getenv('EMAIL_PASSWORD')
+        recipient_email = os.getenv('TO_EMAIL')
+        
+        if not all([sender_email, sender_password, recipient_email]):
+            print("❌ Missing email configuration. Check your environment variables.")
+            return
+        
+        # Create message with proper encoding
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = Header('🤖 Daily AI News & Research Update', 'utf-8')
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+        
+        # Create HTML part with UTF-8 encoding
+        html_part = MIMEText(email_content, 'html', 'utf-8')
+        msg.attach(html_part)
+        
+        # Send email
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        
+        # Send with proper encoding
+        text = msg.as_string()
+        server.sendmail(sender_email, recipient_email, text.encode('utf-8'))
+        server.quit()
+        
+        print("✅ Email sent successfully!")
         
     except Exception as e:
         print(f"❌ Error sending email: {e}")
 
 if __name__ == "__main__":
-    print("🚀 Starting email delivery...")
-    send_email()
+    send_news_email()
