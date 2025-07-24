@@ -1,45 +1,31 @@
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.header import Header
 import sqlite3
 import os
+import re
 
-def clean_text(text):
-    """Clean text to remove problematic characters"""
+def super_clean_text(text):
+    """Ultra-aggressive text cleaning to remove ALL problematic characters"""
     if not text:
         return ""
     
-    # Convert to string first
+    # Convert to string
     text = str(text)
     
-    # Replace non-breaking spaces and other problematic characters
-    text = text.replace('\xa0', ' ')  # Non-breaking space
-    text = text.replace('\u2019', "'")  # Right single quotation mark
-    text = text.replace('\u2018', "'")  # Left single quotation mark
-    text = text.replace('\u201c', '"')  # Left double quotation mark
-    text = text.replace('\u201d', '"')  # Right double quotation mark
-    text = text.replace('\u2013', '-')  # En dash
-    text = text.replace('\u2014', '--')  # Em dash
-    text = text.replace('\u2026', '...')  # Ellipsis
-    
-    # Remove all non-ASCII characters as backup
-    text = ''.join(char for char in text if ord(char) < 128)
-    
-    # Final encoding cleanup
-    try:
-        text = text.encode('ascii', errors='ignore').decode('ascii')
-    except:
-        text = str(text)
+    # Remove ALL non-standard characters, keep only basic ASCII
+    # Keep only letters, numbers, spaces, and basic punctuation
+    text = re.sub(r'[^\x20-\x7E]', ' ', text)  # Remove non-printable ASCII
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
+    text = text.strip()
     
     return text
 
 def send_news_email():
-    """Send AI news email with proper encoding"""
+    """Send AI news email with ultra-safe encoding"""
     try:
         # Get articles from database
         conn = sqlite3.connect("data/articles.db")
-        cursor = conn.execute("SELECT title, content, source, url FROM articles ORDER BY published_date DESC LIMIT 10")
+        cursor = conn.execute("SELECT title, content, source, url FROM articles ORDER BY published_date DESC LIMIT 5")
         articles = cursor.fetchall()
         conn.close()
         
@@ -47,27 +33,24 @@ def send_news_email():
             print("No articles found to send")
             return
         
-        # Build email content
-        email_content = "<h2>🤖 Daily AI News & Research</h2>\n"
+        # Build simple text email (no HTML to avoid encoding issues)
+        email_content = "Daily AI News and Research Update\n"
+        email_content += "=" * 40 + "\n\n"
         
-        for title, content, source, url in articles:
-            # Clean all text content
-            clean_title = clean_text(title)
-            clean_content = clean_text(content)
-            clean_source = clean_text(source)
+        for i, (title, content, source, url) in enumerate(articles, 1):
+            # Super clean all text
+            clean_title = super_clean_text(title)
+            clean_content = super_clean_text(content)
+            clean_source = super_clean_text(source)
             
-            email_content += f"""
-            <div style="margin-bottom: 20px; padding: 15px; border-left: 3px solid #007acc;">
-                <h3 style="color: #007acc; margin: 0 0 10px 0;">{clean_title}</h3>
-                <p style="margin: 0 0 10px 0; color: #333;">{clean_content}</p>
-                <p style="margin: 0; font-size: 12px; color: #666;">
-                    <strong>Source:</strong> {clean_source}
-                    {f' | <a href="{url}">Read more</a>' if url else ''}
-                </p>
-            </div>
-            """
+            email_content += f"{i}. {clean_title}\n"
+            email_content += f"   {clean_content[:200]}...\n"
+            email_content += f"   Source: {clean_source}\n"
+            if url:
+                email_content += f"   URL: {url}\n"
+            email_content += "\n" + "-" * 40 + "\n\n"
         
-        # Email configuration from environment variables
+        # Email configuration
         smtp_server = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
         smtp_port = int(os.getenv('EMAIL_PORT', '587'))
         sender_email = os.getenv('EMAIL_USER')
@@ -75,33 +58,28 @@ def send_news_email():
         recipient_email = os.getenv('TO_EMAIL')
         
         if not all([sender_email, sender_password, recipient_email]):
-            print("❌ Missing email configuration. Check your environment variables.")
+            print("Missing email configuration. Check your environment variables.")
             return
         
-        # Create message with ASCII-safe encoding
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = clean_text('🤖 Daily AI News & Research Update')
+        # Create simple text message (no HTML, no special encoding)
+        msg = MIMEText(email_content, 'plain')
+        msg['Subject'] = "Daily AI News Update"
         msg['From'] = sender_email
         msg['To'] = recipient_email
-        
-        # Create HTML part with ASCII encoding
-        html_part = MIMEText(clean_text(email_content), 'html', 'ascii')
-        msg.attach(html_part)
         
         # Send email
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
         server.login(sender_email, sender_password)
-        
-        # Send with proper encoding - fix for ascii codec error
-        text = msg.as_string()
-        server.sendmail(sender_email, recipient_email, text)
+        server.send_message(msg)
         server.quit()
         
-        print("✅ Email sent successfully!")
+        print("Email sent successfully!")
         
     except Exception as e:
-        print(f"❌ Error sending email: {e}")
+        print(f"Error sending email: {e}")
+        import traceback
+        traceback.print_exc()  # Print full error details
 
 if __name__ == "__main__":
     send_news_email()
