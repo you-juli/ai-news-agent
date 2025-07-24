@@ -9,7 +9,7 @@ def send_email():
     """Send the daily AI news email"""
     
     # Email settings - these come from GitHub secrets
-    sender_email = "your-email@gmail.com"  # You'll change this later
+    sender_email = "you.juli@gmail.com"  # You'll change this later
     password = os.environ.get('GMAIL_APP_PASSWORD')
     recipient = os.environ.get('RECIPIENT_EMAIL')
     
